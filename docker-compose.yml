@@ -1,10 +1,32 @@
+version: "3.8"
+
 services:
   xray:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray-client
     restart: unless-stopped
     ports:
-      - "127.0.0.1:10808:10808"   # SOCKS5 (только localhost — безопаснее)
-      - "127.0.0.1:10809:10809"   # HTTP прокси
+      - "127.0.0.1:10808:10808" # SOCKS5 (localhost — для тестов с хост-машины)
+      - "127.0.0.1:10809:10809" # HTTP прокси
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]
+    networks:
+      - vpn_net
+
+  my-app:
+    image: alpine:latest
+    restart: on-failure
+    networks:
+      - vpn_net
+    environment:
+      - http_proxy=socks5h://xray-client:10808
+      - https_proxy=socks5h://xray-client:10808
+    command: ash -c "apk add -q curl && sleep 3 && curl -s ifconfig.me && echo"
+    depends_on:
+      - xray
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network

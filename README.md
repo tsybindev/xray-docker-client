@@ -34,18 +34,50 @@
 
 ## 🚀 Быстрый старт
 
+**Перед запуском — создай Docker-сеть:**
+
+```bash
+docker network create vpn_network
+```
+
+> Сеть нужна один раз. После создания она будет доступна для всех контейнеров на сервере.
+
+Теперь подготовь `docker-compose.yml`:
+
 ```yaml
 # docker-compose.yml
+version: "3.8"
+
 services:
   xray:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray-client
     restart: unless-stopped
     ports:
-      - "127.0.0.1:10808:10808"   # SOCKS5 (только localhost)
+      - "127.0.0.1:10808:10808"   # SOCKS5 (localhost — для тестов с хост-машины)
       - "127.0.0.1:10809:10809"   # HTTP прокси
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]
+    networks:
+      - vpn_net
+
+  my-app:
+    image: alpine:latest
+    restart: on-failure
+    networks:
+      - vpn_net
+    environment:
+      - http_proxy=socks5h://xray-client:10808
+      - https_proxy=socks5h://xray-client:10808
+    command: ash -c "apk add -q curl && sleep 3 && curl -s ifconfig.me && echo"
+    depends_on:
+      - xray
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
 ```
 
 Положи конфиг в `./xray/config.json` (смотри раздел [Варианты конфигурации](#-варианты-конфигурации)) и запусти:
@@ -57,7 +89,10 @@ docker compose up -d
 **Проверка:**
 
 ```bash
-# Через SOCKS5
+# Проверка через тестовый контейнер my-app
+docker compose logs my-app
+
+# Или напрямую с хост-машины
 curl -x socks5://127.0.0.1:10808 ifconfig.me
 
 # Через HTTP прокси
@@ -87,13 +122,20 @@ services:
     ports:
       - "127.0.0.1:10808:10808"
     environment:
-      SUBSCRIPTION_URL: "https://example.com/link/your-sub?token=xxx"
+      SUBSCRIPTION_URL: "https://example.com/link/your-sub?token=***"
       # или на выбор один из вариантов:
       # VLESS_LINK: "vless://..."
       # CONFIG_JSON: "/etc/xray/config.json"
     volumes:
       - ./xray/entrypoint.sh:/entrypoint.sh
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    networks:
+      - vpn_net
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
 ```
 
 👉 Скрипт `entrypoint.sh` (лежит в этом репозитории) делает следующее:
@@ -120,6 +162,13 @@ services:
     volumes:
       - ./xray/entrypoint.sh:/entrypoint.sh
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    networks:
+      - vpn_net
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
 ```
 
 **Поддерживаемые протоколы в ссылках:**
@@ -208,6 +257,13 @@ services:
     environment:
       SUBSCRIPTION_FILE: "/subscription.txt"
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    networks:
+      - vpn_net
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
 ```
 
 Файл `subscription.txt` — обычный base64-текст подписки (строка или файл).
@@ -216,9 +272,61 @@ services:
 
 ## 🔗 Подключение контейнеров через прокси
 
-### Способ 1: `network_mode: service` (рекомендуемый)
+### Способ 1: Proxy Gateway (рекомендуемый) 🏆
 
-Контейнеры разделяют сетевой стек Xray:
+Xray и твои контейнеры находятся в одной Docker-сети `vpn_network`. Контейнеры получают переменные `http_proxy`/`https_proxy`, указывающие на `xray-client:10808`.
+
+**Плюсы:** не нужно копировать `network_mode` или изобретать костыли, можно подключать сколько угодно независимых проектов.
+
+```yaml
+services:
+  my-app:
+    image: alpine:latest
+    networks:
+      - vpn_net
+    environment:
+      - http_proxy=socks5h://xray-client:10808
+      - https_proxy=socks5h://xray-client:10808
+    depends_on:
+      - xray
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
+```
+
+**Пример: n8n через VPN:**
+
+```yaml
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    networks:
+      - vpn_net
+    environment:
+      - http_proxy=socks5h://xray-client:10808
+      - https_proxy=socks5h://xray-client:10808
+      - NO_PROXY=localhost,127.0.0.1,.local,n8n
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
+```
+
+> `NO_PROXY` нужна, чтобы n8n не пытался ходить через VPN к самому себе и локальным сервисам.
+
+Этот же паттерн работает для **Uptime Kuma, бэкап-скриптов, телеграм-ботов, парсеров** — любых контейнеров, которые уважают `HTTP_PROXY`.
+
+### Способ 2: `network_mode: service` (альтернатива)
+
+Контейнеры разделяют сетевой стек Xray. Всё трафик идёт через VPN без настройки переменных окружения, но работает только для одного контейнера (или нескольких в режиме `docker compose`, но с блокировкой портов):
 
 ```yaml
 services:
@@ -241,7 +349,7 @@ services:
 
 Весь трафик `my-app` идёт через Xray. Просто и надёжно.
 
-### Способ 2: `ALL_PROXY` / `HTTP_PROXY` (для контейнеров, которые уважают прокси)
+### Способ 3: `ALL_PROXY` / `HTTP_PROXY` (для контейнеров, которые уважают прокси)
 
 ```yaml
 services:
@@ -249,16 +357,30 @@ services:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray-client
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:10808:10808"
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]
+    networks:
+      - vpn_net
 
   my-app:
     image: your-image
+    networks:
+      - vpn_net
     environment:
-      ALL_PROXY: "socks5://xray:10808"
-      HTTP_PROXY: "http://xray:10809"
-      HTTPS_PROXY: "http://xray:10809"
-      NO_PROXY: "localhost,127.0.0.1,.local"
+      ALL_PROXY: "socks5://xray-client:10808"
+      HTTP_PROXY: "http://xray-client:10809"
+      HTTPS_PROXY: "http://xray-client:10809"
+      NO_PROXY: "localhost,127.0.0.1,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
     depends_on:
       - xray
+
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
 ```
 
 Подходит для:
@@ -268,7 +390,7 @@ services:
 - `go` с `HTTP_PROXY`
 - `gradle`, `npm`, `pip`
 
-### Способ 3: docker-прокси в стиле `redsocks` (весь трафик контейнера)
+### Способ 4: docker-прокси в стиле `redsocks` (весь трафик контейнера)
 
 Самый агрессивный способ — перенаправлять **весь** TCP трафик через прокси, включая приложения, которые не читают `HTTP_PROXY`. Понадобится `redsocks` или `iptables` в контейнере:
 

@@ -1,22 +1,21 @@
+version: "3.8"
+
 services:
-  # Контейнер, который использует Xray через network_mode: service
-  my-app-via-vpn:
+  # Пример 1: Proxy Gateway (рекомендуемый) — через общую сеть и переменные окружения
+  my-app-via-proxy:
     image: alpine:latest
-    network_mode: "service:xray-client"
-    command: ash -c "apk add curl && curl -s ifconfig.me"
+    networks:
+      - vpn_net
+    environment:
+      - http_proxy=socks5h://xray-client:10808
+      - https_proxy=socks5h://xray-client:10808
+      - NO_PROXY=localhost,127.0.0.1,.local
+    command: ash -c "apk add -q curl && sleep 3 && curl -s ifconfig.me && echo"
     depends_on:
       xray-client:
         condition: service_started
 
-  # Контейнер, который использует Xray через ALL_PROXY
-  my-app-via-proxy:
-    image: alpine:latest
-    environment:
-      ALL_PROXY: "socks5://xray-client:10808"
-      HTTP_PROXY: "http://xray-client:10809"
-      HTTPS_PROXY: "http://xray-client:10809"
-      NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16"
-    command: ash -c "apk add curl && curl -s ifconfig.me"
-    depends_on:
-      xray-client:
-        condition: service_started
+networks:
+  vpn_net:
+    external: true
+    name: vpn_network
