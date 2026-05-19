@@ -1,0 +1,22 @@
+services:
+  # Контейнер, который использует Xray через network_mode: service
+  my-app-via-vpn:
+    image: alpine:latest
+    network_mode: "service:xray-client"
+    command: ash -c "apk add curl && curl -s ifconfig.me"
+    depends_on:
+      xray-client:
+        condition: service_started
+
+  # Контейнер, который использует Xray через ALL_PROXY
+  my-app-via-proxy:
+    image: alpine:latest
+    environment:
+      ALL_PROXY: "socks5://xray-client:10808"
+      HTTP_PROXY: "http://xray-client:10809"
+      HTTPS_PROXY: "http://xray-client:10809"
+      NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16"
+    command: ash -c "apk add curl && curl -s ifconfig.me"
+    depends_on:
+      xray-client:
+        condition: service_started

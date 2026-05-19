@@ -1,0 +1,10 @@
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-client
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10808:10808"   # SOCKS5 (только localhost — безопаснее)
+      - "127.0.0.1:10809:10809"   # HTTP прокси
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro

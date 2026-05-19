@@ -1,0 +1,19 @@
+# Зависимости
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+
+# Системное
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Редакторы
+.idea/
+.vscode/
+*.sublime-*
+
+# Docker
+.env

@@ -1,0 +1,78 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      },
+      "tag": "socks-in"
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 10809,
+      "protocol": "http",
+      "tag": "http-in"
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "your-server.example.com",
+            "port": 443,
+            "users": [
+              {
+                "id": "your-uuid-here",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "www.example.com",
+          "fingerprint": "chrome",
+          "publicKey": "your-public-key",
+          "shortId": "",
+          "spiderX": ""
+        }
+      },
+      "tag": "proxy"
+    },
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "domain": ["geosite:private", "geosite:cn"]
+      },
+      {
+        "type": "field",
+        "outboundTag": "proxy",
+        "network": "tcp,udp"
+      }
+    ]
+  }
+}

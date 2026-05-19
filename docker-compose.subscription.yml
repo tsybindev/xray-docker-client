@@ -1,0 +1,33 @@
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-client
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10808:10808"
+      - "127.0.0.1:10809:10809"
+    environment:
+      # --- ВАРИАНТ 1: Подписка ---
+      SUBSCRIPTION_URL: "https://example.com/link/your-sub?token=xxx"
+
+      # --- ВАРИАНТ 2: VLESS ссылка ---
+      # VLESS_LINK: "vless://..."
+
+      # --- ВАРИАНТ 3: VMess ссылка ---
+      # VMESS_LINK: "vmess://..."
+
+      # --- ВАРИАНТ 4: Trojan ссылка ---
+      # TROJAN_LINK: "trojan://..."
+
+      # --- ВАРИАНТ 5: Shadowsocks ссылка ---
+      # SS_LINK: "ss://..."
+
+      # Опционально: порты
+      # PROXY_PORT_SOCKS: "10808"
+      # PROXY_PORT_HTTP: "10809"
+
+      # Опционально: индекс сервера из подписки (0 — первый)
+      # SELECT_INDEX: "0"
+    volumes:
+      - ./xray/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
